@@ -3,6 +3,9 @@ import { RequestTrigger } from '@lobechat/types';
 import { deserializeParts } from '@lobechat/utils';
 import { isRecord } from '@lobechat/utils/object';
 import debug from 'debug';
+import remarkParse from 'remark-parse';
+import { unified } from 'unified';
+import { visit } from 'unist-util-visit';
 
 import { notifyAgentInterventionRequired } from '@/business/server/agent-run/agentInterventionReview';
 import { notifyAgentRunCompleted } from '@/business/server/agent-run/notifyAgentRunCompleted';
@@ -1267,6 +1270,43 @@ const buildAttachmentFromUrl = (
 };
 
 /**
+ * Extract image destinations from Markdown syntax without treating ordinary
+ * links, escaped markup, or code spans/blocks as attachments. Reference-style
+ * images are resolved against definitions in the same final assistant reply.
+ */
+const extractMarkdownImageAttachments = (content: string): OutboundAttachment[] => {
+  let tree;
+  try {
+    tree = unified().use(remarkParse).parse(content);
+  } catch {
+    return [];
+  }
+
+  const definitions = new Map<string, string>();
+  visit(tree, 'definition', (node) => {
+    const identifier = 'identifier' in node ? node.identifier : undefined;
+    const url = 'url' in node ? node.url : undefined;
+    if (typeof identifier === 'string' && typeof url === 'string') {
+      definitions.set(identifier.toLowerCase(), url);
+    }
+  });
+
+  const attachments: OutboundAttachment[] = [];
+  visit(tree, ['image', 'imageReference'], (node) => {
+    const url =
+      node.type === 'image' && 'url' in node && typeof node.url === 'string'
+        ? node.url
+        : 'identifier' in node && typeof node.identifier === 'string'
+          ? definitions.get(node.identifier.toLowerCase())
+          : undefined;
+    const attachment = buildAttachmentFromUrl(url, 'image');
+    if (attachment) attachments.push(attachment);
+  });
+
+  return attachments;
+};
+
+/**
  * Pull text out of a message's `content` field. Accepts both string and
  * OpenAI-style multimodal arrays `[{ type: 'text', text }, { type: 'image_url', image_url: { url } }]`.
  */
@@ -1434,7 +1474,7 @@ const extractOutboundAttachments = (messages: any[]): OutboundAttachment[] => {
   // Walk from the end backwards: collect attachments until we hit the
   // previous assistant turn that already has text — that boundary marks
   // "the current reply window".
-  const collected: OutboundAttachment[] = [];
+  const collectedByMessage: OutboundAttachment[][] = [];
   let crossedFinalAssistant = false;
 
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -1445,8 +1485,13 @@ const extractOutboundAttachments = (messages: any[]): OutboundAttachment[] => {
 
     if (role === 'assistant') {
       if (!crossedFinalAssistant) {
-        // The final assistant turn: harvest its multimodal parts.
-        collected.push(...extractAttachmentsFromContent(content));
+        // The final assistant turn: harvest both structured multimodal parts
+        // and Markdown images from its user-facing text. Keep the original text
+        // untouched so the link remains a fallback if native delivery fails.
+        const attachments = extractAttachmentsFromContent(content);
+        const text = extractTextFromMessageContent(content);
+        if (text) attachments.push(...extractMarkdownImageAttachments(text));
+        collectedByMessage.push(attachments);
         crossedFinalAssistant = true;
         continue;
       }
@@ -1457,15 +1502,18 @@ const extractOutboundAttachments = (messages: any[]): OutboundAttachment[] => {
 
     if (role === 'tool') {
       // Tool results between the previous assistant turn and the final one.
-      collected.push(...extractAttachmentsFromContent(content));
+      // Only structured parts are trusted here: parsing arbitrary tool text as
+      // Markdown would turn intermediate/debug output into user attachments.
+      collectedByMessage.push(extractAttachmentsFromContent(content));
     }
   }
 
-  // Reverse so message-order (older first) is preserved, then dedupe.
-  collected.reverse();
+  // Reverse message groups so older messages come first while preserving the
+  // attachment order inside each message, then dedupe across representations.
+  collectedByMessage.reverse();
   const seen = new Set<string>();
   const result: OutboundAttachment[] = [];
-  for (const att of collected) {
+  for (const att of collectedByMessage.flat()) {
     const key = att.fetchUrl ?? att.data ?? '';
     if (!key || seen.has(key)) continue;
     seen.add(key);

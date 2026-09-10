@@ -383,6 +383,111 @@ describe('CompletionLifecycle.buildLifecycleEvent', () => {
     ]);
   });
 
+  it('extracts inline and reference-style Markdown images from the final assistant reply', () => {
+    const state = {
+      messages: [
+        {
+          content: [
+            { text: 'Inline: ![chart](https://cdn.example.com/chart.png)\n', type: 'text' },
+            {
+              text: 'Reference: ![preview][asset]\n\n[asset]: https://cdn.example.com/preview.webp',
+              type: 'text',
+            },
+          ],
+          role: 'assistant',
+        },
+      ],
+      metadata: {},
+    };
+
+    const { event } = callBuild(state);
+
+    expect(event.lastAssistantContent).toContain('![chart]');
+    expect(event.attachments).toEqual([
+      { fetchUrl: 'https://cdn.example.com/chart.png', type: 'image' },
+      { fetchUrl: 'https://cdn.example.com/preview.webp', type: 'image' },
+    ]);
+  });
+
+  it('does not extract ordinary links or image-like Markdown inside code', () => {
+    const state = {
+      messages: [
+        {
+          content: [
+            '[download](https://cdn.example.com/file.png)',
+            '`![inline code](https://cdn.example.com/inline-code.png)`',
+            '```md\n![fenced code](https://cdn.example.com/fenced-code.png)\n```',
+            '\\![escaped](https://cdn.example.com/escaped.png)',
+          ].join('\n\n'),
+          role: 'assistant',
+        },
+      ],
+      metadata: {},
+    };
+
+    const { event } = callBuild(state);
+
+    expect(event.attachments).toBeUndefined();
+  });
+
+  it('deduplicates an image represented by both a structured part and Markdown', () => {
+    const state = {
+      messages: [
+        {
+          content: [
+            { image_url: { url: 'https://cdn.example.com/result.png' }, type: 'image_url' },
+            {
+              text: '![result](https://cdn.example.com/result.png)',
+              type: 'text',
+            },
+          ],
+          role: 'assistant',
+        },
+      ],
+      metadata: {},
+    };
+
+    const { event } = callBuild(state);
+
+    expect(event.attachments).toEqual([
+      { fetchUrl: 'https://cdn.example.com/result.png', type: 'image' },
+    ]);
+  });
+
+  it('does not parse Markdown images from intermediate tool text', () => {
+    const state = {
+      messages: [
+        { content: 'previous response', role: 'assistant' },
+        { content: '![tool debug](https://cdn.example.com/debug.png)', role: 'tool' },
+        { content: 'final answer without an image', role: 'assistant' },
+      ],
+      metadata: {},
+    };
+
+    const { event } = callBuild(state);
+
+    expect(event.lastAssistantContent).toBe('final answer without an image');
+    expect(event.attachments).toBeUndefined();
+  });
+
+  it('does not attach an image that exists only in tool state', () => {
+    const state = {
+      generations: [
+        {
+          asset: { url: 'https://cdn.example.com/intermediate.png' },
+          status: 'success',
+        },
+      ],
+      messages: [{ content: 'Final answer without an image.', role: 'assistant' }],
+      metadata: {},
+    };
+
+    const { event } = callBuild(state);
+
+    expect(event.lastAssistantContent).toBe('Final answer without an image.');
+    expect(event.attachments).toBeUndefined();
+  });
+
   it('returns undefined text for image-only final assistant turn (no fallback to earlier text)', () => {
     // Regression: the previous implementation `.find(m => role === 'assistant' && hasText)`
     // would skip the image-only final turn and walk back to the earlier text
