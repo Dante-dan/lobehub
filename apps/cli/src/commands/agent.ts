@@ -841,7 +841,11 @@ async function pollAgentRunStatus(
       return;
     }
 
-    const status = r.status || r.state || 'unknown';
+    const status =
+      r.currentState?.status ??
+      r.status ??
+      r.state ??
+      (r.isCompleted ? (r.hasError ? 'failed' : 'completed') : 'unknown');
     if (status !== lastStatus) {
       lastStatus = status;
       const steps = r.stepCount !== undefined ? ` · ${r.stepCount} step(s)` : '';
