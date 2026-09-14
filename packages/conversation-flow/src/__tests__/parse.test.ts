@@ -1254,6 +1254,75 @@ describe('parse', () => {
   });
 
   describe('Agent Group Scenarios', () => {
+    it('should preserve an assistant-parented member reply alongside the supervisor chain', () => {
+      const messages = [
+        {
+          agentId: 'supervisor',
+          content: 'user',
+          createdAt: 1,
+          id: 'user',
+          parentId: null,
+          role: 'user',
+          updatedAt: 1,
+        },
+        {
+          agentId: 'supervisor',
+          content: 'supervisor-call',
+          createdAt: 2,
+          id: 'supervisor-call',
+          parentId: 'user',
+          role: 'assistant',
+          tools: [
+            {
+              apiName: 'speak',
+              arguments: '{"agentId":"member"}',
+              id: 'call-speak',
+              identifier: 'lobe-group-management',
+              result_msg_id: 'tool-result',
+              type: 'builtin',
+            },
+          ],
+          updatedAt: 2,
+        },
+        {
+          agentId: 'supervisor',
+          content: 'Member started',
+          createdAt: 3,
+          id: 'tool-result',
+          parentId: 'supervisor-call',
+          role: 'tool',
+          tool_call_id: 'call-speak',
+          updatedAt: 3,
+        },
+        {
+          agentId: 'member',
+          content: 'SYNTHETIC_MEMBER_REPLY',
+          createdAt: 4,
+          id: 'member-reply',
+          metadata: { orchestrationRole: 'member' },
+          parentId: 'supervisor-call',
+          role: 'assistant',
+          updatedAt: 4,
+        },
+        {
+          agentId: 'supervisor',
+          content: 'supervisor-followup',
+          createdAt: 5,
+          id: 'supervisor-followup',
+          parentId: 'tool-result',
+          role: 'assistant',
+          updatedAt: 5,
+        },
+      ] satisfies Message[];
+
+      const result = parse(messages);
+      const serializedFlatList = JSON.stringify(result.flatList);
+
+      expect(result.messageMap['member-reply']).toBeDefined();
+      expect(serializedFlatList.match(/"id":"member-reply"/g)).toHaveLength(1);
+      expect(serializedFlatList).toContain('supervisor-followup');
+    });
+
     it('should not aggregate messages from different agents into same AssistantGroup', () => {
       const result = parse(inputs.agentGroup.speakDifferentAgent);
 

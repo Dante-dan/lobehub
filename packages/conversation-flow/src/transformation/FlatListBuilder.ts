@@ -573,17 +573,19 @@ export class FlatListBuilder {
       );
     }
 
-    this.continueInterruptedAssistantGroup(assistantChain, flatList, processedIds, allMessages);
+    this.continueAssistantGroupSideBranches(assistantChain, flatList, processedIds, allMessages);
   }
 
   /**
    * A user can interrupt a tool run before its final assistant is persisted.
-   * The collector folds that run into one group, so the interruption is attached
-   * to an intermediate (now consumed) assistant rather than the group tail.
-   * Recover that user continuation without exposing regenerated assistant
-   * branches or overriding an explicit branch selection.
+   * A group member reply can likewise be attached to the supervisor assistant
+   * that issued the speak call while the supervisor continues through the tool
+   * result. The collector folds the supervisor run into one group, so both side
+   * branches hang from an intermediate (now consumed) assistant rather than the
+   * group tail. Recover only those supported continuations without exposing
+   * regenerated assistant branches or overriding an explicit branch selection.
    */
-  private continueInterruptedAssistantGroup(
+  private continueAssistantGroupSideBranches(
     assistantChain: Message[],
     flatList: Message[],
     processedIds: Set<string>,
@@ -594,26 +596,27 @@ export class FlatListBuilder {
 
     for (const assistant of assistantChain.slice(0, -1)) {
       const childIds = this.childrenMap.get(assistant.id) ?? [];
-      const interruptions = childIds.filter((id) => {
+      const sideContinuations = childIds.filter((id) => {
         const message = this.messageMap.get(id);
         return (
-          message?.role === 'user' &&
+          (message?.role === 'user' ||
+            (message?.role === 'assistant' && message.metadata?.orchestrationRole === 'member')) &&
           !message.threadId &&
           !processedIds.has(id) &&
           message.createdAt >= assistant.createdAt &&
           message.createdAt <= tail.createdAt
         );
       });
-      if (interruptions.length === 0) continue;
+      if (sideContinuations.length === 0) continue;
 
       const activeId = this.branchResolver.getActiveBranchIdFromMetadata(
         assistant,
-        interruptions,
+        sideContinuations,
         this.childrenMap,
         this.branchResolver.getMetadataBranchIds(childIds),
       );
-      // Explicit indices use all non-tool siblings, not only interruptions.
-      if (activeId && interruptions.includes(activeId)) {
+      // Explicit indices use all non-tool siblings, not only side continuations.
+      if (activeId && sideContinuations.includes(activeId)) {
         this.buildFlatListRecursiveForChild(
           assistant.id,
           activeId,
