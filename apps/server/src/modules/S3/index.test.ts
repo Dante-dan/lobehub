@@ -8,6 +8,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   paginateListParts,
   PutObjectCommand,
   S3Client,
@@ -203,6 +204,20 @@ describe('FileS3', () => {
     // Setup getSignedUrl mock
     mockGetSignedUrl = vi.fn().mockResolvedValue('https://presigned-url.example.com');
     (getSignedUrl as unknown as ReturnType<typeof vi.fn>).mockImplementation(mockGetSignedUrl);
+  });
+
+  describe('hasObject', () => {
+    it('matches only the exact requested key', async () => {
+      mockS3ClientSend.mockResolvedValue({ Contents: [{ Key: 'files/a.txt.bak' }] });
+      const s3 = new FileS3();
+
+      await expect(s3.hasObject('files/a.txt')).resolves.toBe(false);
+      expect(ListObjectsV2Command).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        MaxKeys: 1,
+        Prefix: 'files/a.txt',
+      });
+    });
   });
 
   describe('constructor', () => {

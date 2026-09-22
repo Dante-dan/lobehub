@@ -6,6 +6,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   paginateListParts,
   PutObjectCommand,
   S3Client,
@@ -175,6 +176,15 @@ export class S3 {
       contentLength: response.ContentLength ?? 0,
       contentType: response.ContentType,
     };
+  }
+
+  /** Check an exact key through bucket listing when a provider hides missing HEAD requests. */
+  public async hasObject(key: string): Promise<boolean> {
+    const response = await this.client.send(
+      new ListObjectsV2Command({ Bucket: this.bucket, MaxKeys: 1, Prefix: key }),
+    );
+
+    return response.Contents?.some((object) => object.Key === key) ?? false;
   }
 
   public async createPreSignedUrl(key: string, contentLength?: number): Promise<string> {

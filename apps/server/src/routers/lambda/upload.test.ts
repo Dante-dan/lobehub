@@ -31,6 +31,7 @@ const routerMocks = vi.hoisted(() => {
       touchActive: vi.fn(),
     },
     getFileMetadata: vi.fn(),
+    hasObject: vi.fn(),
     model,
     serverDB: {
       transaction: vi.fn(async (callback: (trx: unknown) => unknown) =>
@@ -84,6 +85,7 @@ vi.mock('@/server/modules/S3', () => ({
       createPreSignedUploadPartUrl: routerMocks.createPreSignedUploadPartUrl,
       createPreSignedUrl: routerMocks.createPreSignedUrl,
       getFileMetadata: routerMocks.getFileMetadata,
+      hasObject: routerMocks.hasObject,
     };
   }),
 }));
@@ -99,6 +101,7 @@ describe('uploadRouter', () => {
     routerMocks.getFileMetadata.mockRejectedValue(
       Object.assign(new Error('Not Found'), { name: 'NotFound' }),
     );
+    routerMocks.hasObject.mockResolvedValue(false);
     routerMocks.model.findActiveByPathname.mockResolvedValue(undefined);
     routerMocks.model.create.mockImplementation(async (input: Record<string, unknown>) =>
       createUpload(input),
@@ -121,6 +124,42 @@ describe('uploadRouter', () => {
     ).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(routerMocks.businessFileUploadCheck).not.toHaveBeenCalled();
     expect(routerMocks.model.create).not.toHaveBeenCalled();
+  });
+
+  it('uses an exact-key listing when RustFS returns 403 for a missing HEAD request', async () => {
+    routerMocks.getFileMetadata.mockRejectedValue(
+      Object.assign(new Error('Forbidden'), { $metadata: { httpStatusCode: 403 } }),
+    );
+
+    await expect(
+      caller.createS3PreSignedUrl({ pathname: 'files/new.bin', size: 100 }),
+    ).resolves.toBe('https://example.com/upload');
+
+    expect(routerMocks.hasObject).toHaveBeenCalledWith('files/new.bin');
+  });
+
+  it('still rejects an exact key found after a 403 HEAD response', async () => {
+    routerMocks.getFileMetadata.mockRejectedValue(
+      Object.assign(new Error('Forbidden'), { $metadata: { httpStatusCode: 403 } }),
+    );
+    routerMocks.hasObject.mockResolvedValue(true);
+
+    await expect(
+      caller.createS3PreSignedUrl({ pathname: 'files/existing.bin', size: 100 }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('keeps a listing failure fail-closed after a 403 HEAD response', async () => {
+    routerMocks.getFileMetadata.mockRejectedValue(
+      Object.assign(new Error('Forbidden'), { $metadata: { httpStatusCode: 403 } }),
+    );
+    routerMocks.hasObject.mockRejectedValue(new Error('List denied'));
+
+    await expect(
+      caller.createS3PreSignedUrl({ pathname: 'files/unknown.bin', size: 100 }),
+    ).rejects.toThrow('List denied');
+
+    expect(routerMocks.createPreSignedUrl).not.toHaveBeenCalled();
   });
 
   it('rejects oversized requests before reserving or creating storage state', async () => {

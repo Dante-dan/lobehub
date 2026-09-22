@@ -21,6 +21,12 @@ const isMissingObject = (error: unknown) => {
   return value.name === 'NotFound' || value.$metadata?.httpStatusCode === 404;
 };
 
+const isForbiddenObjectMetadata = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const value = error as { $metadata?: { httpStatusCode?: number } };
+  return value.$metadata?.httpStatusCode === 403;
+};
+
 /**
  * Reserve an upload pathname for `params.userId` before any credentials are
  * issued: serializes the storage-quota check with the reservation insert so
@@ -45,7 +51,7 @@ export const reserveUpload = async (params: {
   multipartPartSize?: number;
   pathname: string;
   size: number;
-  storage: Pick<FileS3, 'getFileMetadata'>;
+  storage: Pick<FileS3, 'getFileMetadata' | 'hasObject'>;
   userId: string;
   workspaceId?: string | null;
 }): Promise<FileUploadItem> => {
@@ -68,6 +74,7 @@ export const reserveUpload = async (params: {
       .then(() => true)
       .catch((error: unknown) => {
         if (isMissingObject(error)) return false;
+        if (isForbiddenObjectMetadata(error)) return params.storage.hasObject(params.pathname);
         throw error;
       });
     if (objectExists) throw uploadConflict('Upload pathname is already in use');
