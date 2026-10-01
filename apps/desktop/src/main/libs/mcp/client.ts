@@ -1,13 +1,12 @@
 import type { Readable } from 'node:stream';
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import {
-  getDefaultEnvironment,
-  StdioClientTransport,
-} from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import type { Progress } from '@modelcontextprotocol/sdk/types.js';
+  Client,
+  type Progress,
+  StreamableHTTPClientTransport,
+  type Transport,
+} from '@modelcontextprotocol/client';
+import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 import { getDesktopEnv } from '@/env';
 
@@ -34,7 +33,13 @@ export class MCPClient {
   private isStdio: boolean = false;
 
   constructor(params: MCPClientParams) {
-    this.mcp = new Client({ name: 'lobehub-desktop-mcp-client', version: '1.0.0' });
+    this.mcp = new Client(
+      { name: 'lobehub-desktop-mcp-client', version: '1.0.0' },
+      {
+        // Probe HTTP services for the 2026 revision while keeping legacy stdio startup.
+        versionNegotiation: { mode: params.type === 'http' ? 'auto' : 'legacy' },
+      },
+    );
 
     switch (params.type) {
       case 'http': {
@@ -77,7 +82,7 @@ export class MCPClient {
 
       default: {
         // Exhaustive check
-         
+
         const _never: never = params;
         throw new Error(`Unsupported MCP connection type: ${(params as any).type}`);
       }
@@ -106,7 +111,7 @@ export class MCPClient {
   private isMethodNotFoundError(error: unknown) {
     const err = error as any;
     if (!err) return false;
-     
+
     if (err.code === -32601) return true;
     if (typeof err.message === 'string' && err.message.includes('Method not found')) return true;
     return false;
@@ -174,9 +179,12 @@ export class MCPClient {
   }
 
   async callTool(toolName: string, args: any): Promise<ToolCallResult> {
-    const result = await this.mcp.callTool({ arguments: args, name: toolName }, undefined, {
-      timeout: getDesktopEnv().MCP_TOOL_TIMEOUT,
-    });
+    const result = await this.mcp.callTool(
+      { arguments: args, name: toolName },
+      {
+        timeout: getDesktopEnv().MCP_TOOL_TIMEOUT,
+      },
+    );
     return result as ToolCallResult;
   }
 }

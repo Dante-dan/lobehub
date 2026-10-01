@@ -7,7 +7,7 @@ import {
 } from '@lobechat/types';
 import { safeParseJSON } from '@lobechat/utils';
 import { type DeploymentOption } from '@lobehub/market-sdk';
-import { McpError } from '@modelcontextprotocol/sdk/types.js';
+import { ProtocolError } from '@modelcontextprotocol/client';
 import { TRPCError } from '@trpc/server';
 import retry from 'async-retry';
 import debug from 'debug';
@@ -252,8 +252,8 @@ export class MCPService {
 
       return processedResult;
     } catch (error) {
-      if (error instanceof McpError) {
-        const mcpError = error as McpError;
+      if (error instanceof ProtocolError) {
+        const mcpError = error as ProtocolError;
 
         return {
           content: mcpError.message,

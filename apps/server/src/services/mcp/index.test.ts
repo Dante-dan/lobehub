@@ -1,3 +1,4 @@
+import { ProtocolError } from '@modelcontextprotocol/client';
 import { TRPCError } from '@trpc/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -181,6 +182,24 @@ describe('MCPService', () => {
       expect(result.content).toBe('Error occurred');
       expect(result.success).toBe(true);
       expect(result.state).toEqual(errorResult);
+    });
+
+    it('keeps SDK protocol failures as failed tool results', async () => {
+      const error = new ProtocolError(-32602, 'Invalid tool arguments');
+      mockClient.callTool.mockRejectedValue(error);
+
+      const result = await mcpService.callTool({
+        clientParams: mockParams,
+        toolName: 'testTool',
+        argsStr: '{}',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(error);
+      expect(result.state).toEqual({
+        content: [{ type: 'text', text: error.message }],
+        isError: true,
+      });
     });
 
     it('should throw TRPCError when client throws error', async () => {

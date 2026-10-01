@@ -1,13 +1,12 @@
 import { spawn } from 'node:child_process';
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import {
-  getDefaultEnvironment,
-  StdioClientTransport,
-} from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { type Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { type Progress } from '@modelcontextprotocol/sdk/types.js';
+  Client,
+  type Progress,
+  StreamableHTTPClientTransport,
+  type Transport,
+} from '@modelcontextprotocol/client';
+import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import debug from 'debug';
 
 import {
@@ -168,7 +167,13 @@ export class MCPClient {
 
   constructor(params: MCPClientParams) {
     this.params = params;
-    this.mcp = new Client({ name: 'lobehub-mcp-client', version: '1.0.0' });
+    this.mcp = new Client(
+      { name: 'lobehub-mcp-client', version: '1.0.0' },
+      {
+        // Probe HTTP services for the 2026 revision while keeping legacy stdio startup.
+        versionNegotiation: { mode: params.type === 'http' ? 'auto' : 'legacy' },
+      },
+    );
 
     switch (params.type) {
       case 'http': {
@@ -385,9 +390,12 @@ export class MCPClient {
 
   async callTool(toolName: string, args: any): Promise<ToolCallResult> {
     log('Calling tool: %s with args: %O, timeout: %O', toolName, args, MCP_TOOL_TIMEOUT);
-    const result = await this.mcp.callTool({ arguments: args, name: toolName }, undefined, {
-      timeout: MCP_TOOL_TIMEOUT,
-    });
+    const result = await this.mcp.callTool(
+      { arguments: args, name: toolName },
+      {
+        timeout: MCP_TOOL_TIMEOUT,
+      },
+    );
     log('Tool call result: %O', result);
     return result as ToolCallResult;
   }
