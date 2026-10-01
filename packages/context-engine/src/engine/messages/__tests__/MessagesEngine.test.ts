@@ -247,6 +247,43 @@ describe('MessagesEngine', () => {
       ]);
     });
 
+    it('prepares PDF vision input only after history truncation', async () => {
+      const prepareVisionMessages = vi.fn(async (messages: UIChatMessage[]) => {
+        expect(messages.map((message) => message.id)).not.toContain('old-pdf');
+        return messages;
+      });
+      const engine = new MessagesEngine(
+        createBasicParams({
+          capabilities: { isCanUseVision: () => true },
+          enableHistoryCount: true,
+          historyCount: 1,
+          fileContext: { enabled: true, includeFileUrl: true, prepareVisionMessages },
+          messages: [
+            {
+              id: 'old-pdf',
+              role: 'user',
+              content: 'Read PDF',
+              fileList: [{ id: 'too-large' }],
+            } as UIChatMessage,
+            { id: 'current', role: 'user', content: 'Hello' } as UIChatMessage,
+          ],
+        }),
+      );
+      await engine.process();
+      expect(prepareVisionMessages).toHaveBeenCalledOnce();
+    });
+
+    it('does not prepare PDF images for text-only models', async () => {
+      const prepareVisionMessages = vi.fn();
+      await new MessagesEngine(
+        createBasicParams({
+          capabilities: { isCanUseVision: () => false },
+          fileContext: { enabled: true, includeFileUrl: true, prepareVisionMessages },
+        }),
+      ).process();
+      expect(prepareVisionMessages).not.toHaveBeenCalled();
+    });
+
     it('should process messages and return result with stats', async () => {
       const params = createBasicParams();
       const engine = new MessagesEngine(params);

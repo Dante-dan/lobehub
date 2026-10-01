@@ -46,6 +46,7 @@ export const toContextSnapshot = ({
   planTodo,
   projectInstructions,
   provider,
+  prepareVisionMessages,
   skillsConfig,
   systemRole,
   toolDiscoveryConfig,
@@ -66,7 +67,7 @@ export const toContextSnapshot = ({
     systemRole,
   },
   // Server-side file access URLs resolve to stable file-proxy URLs in production.
-  fileContext: { enabled: true, includeFileUrl: true },
+  fileContext: { enabled: true, includeFileUrl: true, prepareVisionMessages },
   model: {
     capabilities: {
       isCanUseAudio: capabilities?.isCanUseAudio,
