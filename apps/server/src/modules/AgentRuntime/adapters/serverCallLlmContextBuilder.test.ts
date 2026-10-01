@@ -13,6 +13,10 @@ const serverMessagesEngineMock = vi.hoisted(() => vi.fn());
 const marketCredsListMock = vi.hoisted(() => vi.fn());
 const workspaceFindByIdMock = vi.hoisted(() => vi.fn());
 
+const preparePdfVisionMessagesMock = vi.hoisted(() => vi.fn());
+vi.mock('./pdfVision', () => ({ preparePdfVisionMessages: preparePdfVisionMessagesMock }));
+vi.mock('@/server/services/file', () => ({ FileService: class {} }));
+
 vi.mock('@/database/models/user', () => ({
   UserModel: class {
     static getInfoForAIGeneration = getInfoForAIGenerationMock;
@@ -302,5 +306,44 @@ describe('buildServerCallLlmContext - workspace context', () => {
     expect(serverMessagesEngineMock).toHaveBeenCalledWith(
       expect.not.objectContaining({ workspaceContext: expect.anything() }),
     );
+  });
+});
+
+describe('buildServerCallLlmContext - scanned PDF native vision', () => {
+  it('prepares page images before the vision model context engine runs', async () => {
+    const messages = [{ id: 'scan', role: 'user', content: 'Read PDF', fileList: [{ id: 'pdf' }] }];
+    const prepared = [
+      { ...messages[0], imageList: [{ id: 'pdf:page:1', url: 'data:image/png;base64,cG5n' }] },
+    ];
+    resolveServerCallLlmContextHintsMock.mockResolvedValue({
+      capabilities: { isCanUseVision: () => true },
+      messagesForContext: messages,
+      shouldReplayAssistantReasoning: false,
+    });
+    preparePdfVisionMessagesMock.mockResolvedValue(prepared);
+    await buildServerCallLlmContext({
+      ctx: createCtx(),
+      llmPayload,
+      model: 'vision',
+      provider: 'openai',
+      state,
+      tooling,
+    });
+    const input = serverMessagesEngineMock.mock.calls[0][0];
+    expect(input.messages).toBe(messages);
+    expect(await input.prepareVisionMessages(messages)).toBe(prepared);
+    expect(preparePdfVisionMessagesMock).toHaveBeenCalledWith(messages, expect.any(Object));
+  });
+
+  it('retains the text-only path when the active model has no vision', async () => {
+    await buildServerCallLlmContext({
+      ctx: createCtx(),
+      llmPayload,
+      model: 'text',
+      provider: 'openai',
+      state,
+      tooling,
+    });
+    expect(preparePdfVisionMessagesMock).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import type {
   DiscordContext,
   EvalContext,
   FileContent,
+  FileContextConfig,
   GroupAgentBuilderContext,
   KnowledgeBaseInfo,
   LobeToolManifest,
@@ -105,6 +106,7 @@ export interface ServerMessagesEngineParams {
   // ========== Capability injection ==========
   /** Model capability checkers */
   capabilities?: ServerModelCapabilities;
+  prepareVisionMessages?: FileContextConfig['prepareVisionMessages'];
   /** Bot platform context for injecting platform capabilities (e.g. markdown support) */
   botPlatformContext?: BotPlatformContext;
   /** App origin + workspace slug so the model writes links that resolve to the right scope */

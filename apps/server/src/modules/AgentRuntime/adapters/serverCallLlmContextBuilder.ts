@@ -19,9 +19,11 @@ import {
   createServerContextFactProviders,
   resolveServerConnectorFeatures,
 } from '@/server/modules/Mecha/ContextEngineering/providers';
+import { FileService } from '@/server/services/file';
 import { resolveBuilderGroupId } from '@/server/services/toolExecution/serverRuntimes/groupAgentBuilderTarget';
 
 import type { RuntimeExecutorContext } from '../context';
+import { preparePdfVisionMessages } from './pdfVision';
 import {
   resolveServerCallLlmContextHints,
   type ServerCallLlmContextHints,
@@ -183,6 +185,18 @@ export const buildServerCallLlmContext = async ({
         })),
     },
     messages: messagesForContext,
+    prepareVisionMessages:
+      ctx.serverDB && ctx.userId
+        ? (messages: typeof messagesForContext) =>
+            preparePdfVisionMessages(
+              messages,
+              new FileService(
+                ctx.serverDB!,
+                ctx.userId!,
+                state.origin?.workspaceId ?? ctx.workspaceId,
+              ),
+            )
+        : undefined,
     model,
     modelDisplayName,
     modelKnowledgeCutoff,

@@ -1,6 +1,6 @@
 import { createMediaFileRef } from '@lobechat/const/mediaRef';
 import { filesPrompts } from '@lobechat/prompts';
-import type { ChatAudioItem, MessageContentPart } from '@lobechat/types';
+import type { ChatAudioItem, MessageContentPart, UIChatMessage } from '@lobechat/types';
 import { normalizeAudioDurationMs } from '@lobechat/utils/audio';
 import { imageUrlToBase64 } from '@lobechat/utils/imageToBase64';
 import { parseDataUri } from '@lobechat/utils/uriParser';
@@ -80,6 +80,8 @@ export interface FileContextConfig {
   enabled?: boolean;
   /** Whether to include file URLs in file context prompts */
   includeFileUrl?: boolean;
+  /** Backend-only preparation after history truncation, before native vision encoding. */
+  prepareVisionMessages?: (messages: UIChatMessage[]) => Promise<UIChatMessage[]>;
 }
 
 export interface MessageContentConfig {
@@ -141,6 +143,17 @@ export class MessageContentProcessor extends BaseProcessor {
     let userMessagesProcessed = 0;
     let assistantMessagesProcessed = 0;
     let toolMessagesProcessed = 0;
+
+    if (
+      this.config.isCanUseVision?.(this.config.model, this.config.provider) &&
+      this.config.fileContext?.prepareVisionMessages
+    ) {
+      // This processor runs after history selection and group flattening. Preparation
+      // failures must propagate, rather than sending an unreadable PDF silently.
+      clonedContext.messages = await this.config.fileContext.prepareVisionMessages(
+        clonedContext.messages,
+      );
+    }
 
     // Process the content of each message
     for (let i = 0; i < clonedContext.messages.length; i++) {

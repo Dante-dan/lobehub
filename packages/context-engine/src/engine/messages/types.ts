@@ -97,6 +97,8 @@ export type VariableGenerators = Record<string, () => string>;
  * File context configuration
  */
 export interface FileContextConfig {
+  /** Prepare native vision attachments after the engine selects model context. */
+  prepareVisionMessages?: (messages: UIChatMessage[]) => Promise<UIChatMessage[]>;
   /** Whether to enable file context injection */
   enabled: boolean;
   /** Whether to include file URLs (desktop typically uses false) */
