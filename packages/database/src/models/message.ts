@@ -4637,7 +4637,7 @@ export class MessageModel {
           const messageUpdateData: Record<string, any> = {};
 
           if (content !== undefined) {
-            messageUpdateData.content = content;
+            messageUpdateData.content = sanitizeNullBytes(content);
           }
 
           if (metadata !== undefined || heterogeneousToolState !== undefined) {

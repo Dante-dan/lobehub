@@ -830,6 +830,24 @@ describe('MessageModel Update Tests', () => {
   });
 
   describe('updateToolMessage', () => {
+    it('should sanitize NUL bytes in tool output before persisting it', async () => {
+      const id = 'tool-msg-null-bytes';
+      await serverDB.insert(messages).values({
+        id,
+        userId,
+        role: 'tool',
+        content: '',
+      });
+
+      const result = await messageModel.updateToolMessage(id, {
+        content: 'binary\u0000Z output\u0000 — literal \\u0000',
+      });
+
+      expect(result.success).toBe(true);
+      const [dbResult] = await serverDB.select().from(messages).where(eq(messages.id, id));
+      expect(dbResult.content).toBe('binaryZ output — literal \\u0000');
+    });
+
     it('should update content only', async () => {
       await serverDB.insert(messages).values({
         id: 'tool-msg-1',
