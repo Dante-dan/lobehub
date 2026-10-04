@@ -1597,7 +1597,16 @@ export class TopicModel {
               tx
                 .update(messages)
                 .set({ topicId: topic.id })
-                .where(and(this.messageOwnership(), inArray(messages.id, messageIds))),
+                // Creation adopts unbound messages; moving an existing topic's
+                // messages is a separate, explicit operation. Check persisted
+                // ownership here because a client's default-view cache can be stale.
+                .where(
+                  and(
+                    this.messageOwnership(),
+                    inArray(messages.id, messageIds),
+                    isNull(messages.topicId),
+                  ),
+                ),
             { messageCount: messageIds.length },
           );
 

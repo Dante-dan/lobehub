@@ -230,6 +230,38 @@ describe('topic action', () => {
       expect(topicId).toEqual('new-topic-id');
     });
 
+    it.each(['createTopic', 'saveToTopic'] as const)(
+      '%s should exclude messages already owned by a topic from a stale default view',
+      async (action) => {
+        const oldMessage = { id: 'old-message', topicId: 'old-topic' } as UIChatMessage;
+        const newMessage = { id: 'new-message', topicId: null } as UIChatMessage;
+        const { result } = renderHook(() => useChatStore());
+        act(() => {
+          useChatStore.setState({
+            activeAgentId: 'session-id',
+            messagesMap: {
+              [messageMapKey({ agentId: 'session-id' })]: [oldMessage, newMessage],
+            },
+          });
+        });
+        const createSpy = vi
+          .spyOn(result.current, 'internal_createTopic')
+          .mockResolvedValue('new-topic');
+        const summarySpy = vi
+          .spyOn(result.current, 'summaryTopicTitle')
+          .mockResolvedValue(undefined);
+
+        await result.current[action]();
+
+        expect(createSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ messages: ['new-message'] }),
+        );
+        if (action === 'saveToTopic') {
+          expect(summarySpy).toHaveBeenCalledWith('new-topic', [newMessage]);
+        }
+      },
+    );
+
     it('should fire the title summary without blocking saveToTopic', async () => {
       const { result } = renderHook(() => useChatStore());
       const messages = [{ id: 'message1' }, { id: 'message2' }] as UIChatMessage[];
