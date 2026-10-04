@@ -103,6 +103,22 @@ describe('TopicModel - Create', () => {
       expect(unassociatedMessage[0].topicId).toBeNull();
     });
 
+    it('should not move already bound messages when creating a topic from a stale list', async () => {
+      const oldTopic = await topicModel.create({ sessionId, title: 'Original' }, 'original-topic');
+      await serverDB.insert(messages).values([
+        { id: 'bound-message', role: 'user', userId, sessionId, topicId: oldTopic.id },
+        { id: 'unbound-message', role: 'user', userId, sessionId },
+      ]);
+
+      const newTopic = await topicModel.create(
+        { sessionId, title: 'New', messages: ['bound-message', 'unbound-message'] },
+        'new-topic',
+      );
+      const rows = await serverDB.select().from(messages);
+      expect(rows.find((message) => message.id === 'bound-message')?.topicId).toBe(oldTopic.id);
+      expect(rows.find((message) => message.id === 'unbound-message')?.topicId).toBe(newTopic.id);
+    });
+
     it('should associate workspace messages created by another member', async () => {
       const workspaceId = 'topic-create-workspace';
       const workspaceSessionId = 'topic-create-workspace-session';

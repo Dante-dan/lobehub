@@ -251,7 +251,10 @@ export class ChatTopicActionImpl {
   createTopic = async (sessionId?: string): Promise<string | undefined> => {
     const { activeAgentId, internal_createTopic } = this.#get();
 
-    const messages = displayMessageSelectors.activeDisplayMessages(this.#get());
+    // A stale default-view cache may still contain messages owned by an old topic.
+    const messages = displayMessageSelectors
+      .activeDisplayMessages(this.#get())
+      .filter((message) => !message.topicId);
 
     this.#set({ creatingTopic: true }, false, n('creatingTopic/start'));
     const targetSessionId = sessionId || activeAgentId;
@@ -271,7 +274,10 @@ export class ChatTopicActionImpl {
 
   saveToTopic = async (sessionId?: string): Promise<string | undefined> => {
     // if there is no message, stop
-    const messages = displayMessageSelectors.activeDisplayMessages(this.#get());
+    // A stale default-view cache may still contain messages owned by an old topic.
+    const messages = displayMessageSelectors
+      .activeDisplayMessages(this.#get())
+      .filter((message) => !message.topicId);
     if (messages.length === 0) return;
 
     const { activeAgentId, summaryTopicTitle, internal_createTopic } = this.#get();
