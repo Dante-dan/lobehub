@@ -38,12 +38,10 @@ import { type GitLinkedPRSummary, gitService } from '@/services/git';
 import { messageService } from '@/services/message';
 import type { TopicBatchDeleteScope } from '@/services/topic';
 import { topicService } from '@/services/topic';
-import { createTopic, saveToTopic } from './topicCreation';
 import { getAiInfraStoreState } from '@/store/aiInfra';
 import { aiModelSelectors } from '@/store/aiInfra/slices/aiModel/selectors';
 import { type ChatStore } from '@/store/chat';
 import { evictMessageCache } from '@/store/chat/utils/evictMessageCache';
-import { snapshotAgentModel, snapshotAgentReasoning } from '@/store/chat/utils/snapshotAgentModel';
 import { topicMapKey, type TopicMapScope } from '@/store/chat/utils/topicMapKey';
 import {
   isAudioOnlyFirstUserMessage,
@@ -69,7 +67,6 @@ import {
 import { type ChatTopic, type ChatTopicStatus, type CreateTopicParams } from '@/types/topic';
 import { setNamespace } from '@/utils/storeDebug';
 
-import { displayMessageSelectors } from '../message/selectors';
 import { type TopicData } from './initialState';
 import {
   applyTopicDispatchToBucket,
@@ -82,6 +79,7 @@ import {
 } from './projection';
 import { type ChatTopicDispatch } from './reducer';
 import { topicSelectors } from './selectors';
+import { createTopic, saveToTopic } from './topicCreation';
 
 const n = setNamespace('t');
 

@@ -67,8 +67,8 @@ import {
   trashStamp,
 } from '../utils/softDelete';
 import { buildWorkspacePayload, buildWorkspaceWhere } from '../utils/workspace';
-import { topicMetadataWithCreator } from './topicCreator';
 import { createTopicWithMessages } from './topicCreation';
+import { topicMetadataWithCreator } from './topicCreator';
 import { recomputeTopicUsage } from './topicUsage';
 
 type OnboardingSessionMetadataPatch = Partial<NonNullable<ChatTopicMetadata['onboardingSession']>>;
@@ -1551,7 +1551,12 @@ export class TopicModel {
     timing?: ModelTimingContext,
   ): Promise<TopicItem> =>
     createTopicWithMessages(
-      { db: this.db, userId: this.userId, workspaceId: this.workspaceId, messageOwnership: this.messageOwnership() },
+      {
+        db: this.db,
+        userId: this.userId,
+        workspaceId: this.workspaceId,
+        messageOwnership: this.messageOwnership(),
+      },
       params,
       id,
       timing,

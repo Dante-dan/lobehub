@@ -1,41 +1,14 @@
-import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '@lobechat/business-const';
-import { TOPIC_TITLE_JSON_SCHEMA } from '@lobechat/prompts';
 import type { LobeUser, UIChatMessage } from '@lobechat/types';
-import { RequestTrigger } from '@lobechat/types';
-import { toast } from '@lobehub/ui/base-ui';
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { type Mock } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LOADING_FLAT } from '@/const/message';
-import { cacheScope, REPLICA_INDEX_KEY, replicaKeys } from '@/libs/replica';
-import { mutate } from '@/libs/swr';
-import { aiAgentService } from '@/services/aiAgent';
-import { aiChatService } from '@/services/aiChat';
-import { chatService } from '@/services/chat';
-import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
 import { useAgentStore } from '@/store/agent';
-import { useAiInfraStore } from '@/store/aiInfra';
-import { aiModelSelectors } from '@/store/aiInfra/slices/aiModel/selectors';
-import { operationSelectors } from '@/store/chat/slices/operation/selectors';
-import type { TOPIC_VISIBLY_RUNNING_OPERATION_TYPES } from '@/store/chat/slices/operation/types';
-import { SETTLEABLE_TOPIC_RUN_OPERATION_TYPES } from '@/store/chat/slices/operation/types';
-import { PortalViewType } from '@/store/chat/slices/portal/initialState';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
-import { topicMapKey } from '@/store/chat/utils/topicMapKey';
 import { useSessionStore } from '@/store/session';
 import { useUserStore } from '@/store/user';
-import { type ChatTopic } from '@/types/topic';
 
 import { useChatStore } from '../../store';
-import { topicListResource } from './projection';
-
-// Revalidation is narrowed to the active identity scope.
-const topicListSyncKey = (containerKey: string, scope = cacheScope.get()) =>
-  replicaKeys.sync(topicListResource.name, topicListResource.version, scope, containerKey, {
-    pageSize: 20,
-  });
 
 vi.mock('@lobehub/ui/base-ui', async (importOriginal) => {
   const actual = await importOriginal<{ toast: Record<string, unknown> }>();
