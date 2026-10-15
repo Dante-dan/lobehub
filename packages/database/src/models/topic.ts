@@ -68,6 +68,7 @@ import {
 } from '../utils/softDelete';
 import { buildWorkspacePayload, buildWorkspaceWhere } from '../utils/workspace';
 import { topicMetadataWithCreator } from './topicCreator';
+import { createTopicWithMessages } from './topicCreation';
 import { recomputeTopicUsage } from './topicUsage';
 
 type OnboardingSessionMetadataPatch = Partial<NonNullable<ChatTopicMetadata['onboardingSession']>>;
@@ -1545,81 +1546,16 @@ export class TopicModel {
   // **************** Create *************** //
 
   create = async (
-    { messages: messageIds, ...params }: CreateTopicParams,
+    params: CreateTopicParams,
     id: string = this.genId(),
     timing?: ModelTimingContext,
-  ): Promise<TopicItem> => {
-    const insertData = buildWorkspacePayload(
-      { userId: this.userId, workspaceId: this.workspaceId },
-      {
-        ...params,
-        agentId: params.agentId || null,
-        groupId: params.groupId || null,
-        id,
-        sessionId: params.sessionId || null,
-      },
-    );
-    const insertMeta = {
-      hasAgentId: !!params.agentId,
-      hasGroupId: !!params.groupId,
-      hasSessionId: !!params.sessionId,
-    };
-
-    if (!messageIds || messageIds.length === 0) {
-      const [topic] = await runTimedStage(
-        timing,
-        'db.topic.create.topics.insert',
-        () => this.db.insert(topics).values(insertData).returning(),
-        insertMeta,
-      );
-
-      return topic;
-    }
-
-    return runTimedStage(
+  ): Promise<TopicItem> =>
+    createTopicWithMessages(
+      { db: this.db, userId: this.userId, workspaceId: this.workspaceId, messageOwnership: this.messageOwnership() },
+      params,
+      id,
       timing,
-      'db.topic.create.transaction',
-      () =>
-        this.db.transaction(async (tx) => {
-          // Insert new topic
-          const [topic] = await runTimedStage(
-            timing,
-            'db.topic.create.topics.insert',
-            () => tx.insert(topics).values(insertData).returning(),
-            insertMeta,
-          );
-
-          // Update associated messages' topicId
-          await runTimedStage(
-            timing,
-            'db.topic.create.messages.updateTopic',
-            () =>
-              tx
-                .update(messages)
-                .set({ topicId: topic.id })
-                // Creation adopts unbound messages; moving an existing topic's
-                // messages is a separate, explicit operation. Check persisted
-                // ownership here because a client's default-view cache can be stale.
-                .where(
-                  and(
-                    this.messageOwnership(),
-                    inArray(messages.id, messageIds),
-                    isNull(messages.topicId),
-                  ),
-                ),
-            { messageCount: messageIds.length },
-          );
-
-          return topic;
-        }),
-      {
-        hasAgentId: !!params.agentId,
-        hasGroupId: !!params.groupId,
-        hasSessionId: !!params.sessionId,
-        messageCount: messageIds?.length ?? 0,
-      },
     );
-  };
 
   batchCreate = async (topicParams: (CreateTopicParams & { id?: string })[]) => {
     // Start a transaction

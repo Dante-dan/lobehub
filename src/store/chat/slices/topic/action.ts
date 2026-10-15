@@ -38,6 +38,7 @@ import { type GitLinkedPRSummary, gitService } from '@/services/git';
 import { messageService } from '@/services/message';
 import type { TopicBatchDeleteScope } from '@/services/topic';
 import { topicService } from '@/services/topic';
+import { createTopic, saveToTopic } from './topicCreation';
 import { getAiInfraStoreState } from '@/store/aiInfra';
 import { aiModelSelectors } from '@/store/aiInfra/slices/aiModel/selectors';
 import { type ChatStore } from '@/store/chat';
@@ -356,60 +357,11 @@ export class ChatTopicActionImpl {
     }
   };
 
-  createTopic = async (sessionId?: string): Promise<string | undefined> => {
-    const { activeAgentId, internal_createTopic } = this.#get();
+  createTopic = (sessionId?: string): Promise<string | undefined> =>
+    createTopic(this.#set, this.#get, sessionId);
 
-    // A stale default-view cache may still contain messages owned by an old topic.
-    const messages = displayMessageSelectors
-      .activeDisplayMessages(this.#get())
-      .filter((message) => !message.topicId);
-
-    this.#set({ creatingTopic: true }, false, n('creatingTopic/start'));
-    const targetSessionId = sessionId || activeAgentId;
-    const modelSnapshot = snapshotAgentModel(targetSessionId);
-    const reasoningSnapshot = await snapshotAgentReasoning(targetSessionId, modelSnapshot);
-    const topicId = await internal_createTopic({
-      ...modelSnapshot,
-      ...(reasoningSnapshot ? { metadata: reasoningSnapshot } : {}),
-      title: t('defaultTitle', { ns: 'topic' }),
-      messages: messages.map((m) => m.id),
-      sessionId: targetSessionId,
-    });
-    this.#set({ creatingTopic: false }, false, n('creatingTopic/end'));
-
-    return topicId;
-  };
-
-  saveToTopic = async (sessionId?: string): Promise<string | undefined> => {
-    // if there is no message, stop
-    // A stale default-view cache may still contain messages owned by an old topic.
-    const messages = displayMessageSelectors
-      .activeDisplayMessages(this.#get())
-      .filter((message) => !message.topicId);
-    if (messages.length === 0) return;
-
-    const { activeAgentId, summaryTopicTitle, internal_createTopic } = this.#get();
-    const targetSessionId = sessionId || activeAgentId;
-
-    // 1. create topic and bind these messages
-    const modelSnapshot = snapshotAgentModel(targetSessionId);
-    const reasoningSnapshot = await snapshotAgentReasoning(targetSessionId, modelSnapshot);
-    const topicId = await internal_createTopic({
-      ...modelSnapshot,
-      ...(reasoningSnapshot ? { metadata: reasoningSnapshot } : {}),
-      title: t('defaultTitle', { ns: 'topic' }),
-      messages: messages.map((m) => m.id),
-      sessionId: targetSessionId,
-    });
-
-    // 2. auto summary topic Title — fire-and-forget; the title streams into the
-    // row as it generates, no separate loading affordance needed.
-    void summaryTopicTitle(topicId, messages).catch((error) => {
-      console.error('[saveToTopic] Failed to summarize topic title:', error);
-    });
-
-    return topicId;
-  };
+  saveToTopic = (sessionId?: string): Promise<string | undefined> =>
+    saveToTopic(this.#get, sessionId);
 
   duplicateTopic = async (id: string): Promise<void> => {
     const { refreshTopic, switchTopic } = this.#get();
