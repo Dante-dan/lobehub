@@ -325,7 +325,8 @@ export class AiModelModel {
     // non-chat model (e.g. a speech-to-text card) into a `chat` row, which would leak it into
     // chat pickers. Only the inserted row takes the builtin type; an existing row keeps its own.
     const type =
-      value.type ?? (await this.#resolveDefaultModelTypes(value.providerId, [value.id])).get(value.id);
+      value.type ??
+      (await this.#resolveDefaultModelTypes(value.providerId, [value.id])).get(value.id);
     if (type) insertValues.type = normalizeAiModelType(type);
 
     const updateValues: Partial<typeof aiModels.$inferInsert> = {
@@ -344,7 +345,11 @@ export class AiModelModel {
       });
   };
 
-  batchUpdateAiModels = async (providerId: string, models: AiProviderModelListItem[]) => {
+  batchUpdateAiModels = async (
+    providerId: string,
+    models: AiProviderModelListItem[],
+    options: { updateSettings?: boolean } = {},
+  ) => {
     // Early return if models array is empty to prevent database insertion error
     if (this.isEmptyArray(models)) {
       return [];
@@ -370,6 +375,12 @@ export class AiModelModel {
     }
 
     const uniqueModels = [...uniqueModelMap.values()];
+
+    // Provider refreshes share this upsert with explicit CLI edits. Only the
+    // latter may replace user settings, and only for rows that supplied them.
+    const settingsIds = uniqueModels
+      .filter((model) => model.settings !== undefined)
+      .map(({ id }) => id);
 
     const records = uniqueModels.map(({ id, ...model }) => {
       const input = model as BatchAiModelInput;
@@ -448,6 +459,18 @@ export class AiModelModel {
       .values(records)
       .onConflictDoUpdate({
         set: {
+          ...(options.updateSettings && settingsIds.length > 0
+            ? {
+                settings: sql`CASE
+                  WHEN ai_models.id IN (${sql.join(
+                    settingsIds.map((id) => sql`${id}`),
+                    sql`, `,
+                  )})
+                  THEN excluded.settings
+                  ELSE ai_models.settings
+                END`,
+              }
+            : {}),
           // User-editable fields: keep existing DB value; only fill when NULL
           displayName: sql`COALESCE(ai_models.display_name, excluded.display_name)`,
           // Provider-sourced fields: allow remote data to update remote/custom/new models

@@ -245,7 +245,7 @@ describe('aiModelRouter', () => {
     expect(mockBatchToggle).toHaveBeenCalledWith('provider-1', ['model-1', 'model-2'], true);
   });
 
-  it('should batch update ai models', async () => {
+  it.each([undefined, true])('should forward batch settings mode %s', async (updateSettings) => {
     const mockBatchUpdate = vi.fn().mockResolvedValue([]);
     vi.mocked(AiModelModel).mockImplementation(function () {
       return {
@@ -258,12 +258,14 @@ describe('aiModelRouter', () => {
     await caller.batchUpdateAiModels({
       id: 'provider-1',
       models: [{ id: 'model-1' }, { id: 'model-2' }],
+      updateSettings,
     });
 
-    expect(mockBatchUpdate).toHaveBeenCalledWith('provider-1', [
-      { id: 'model-1' },
-      { id: 'model-2' },
-    ]);
+    expect(mockBatchUpdate).toHaveBeenCalledWith(
+      'provider-1',
+      [{ id: 'model-1' }, { id: 'model-2' }],
+      { updateSettings },
+    );
   });
 
   it('should clear models by provider', async () => {

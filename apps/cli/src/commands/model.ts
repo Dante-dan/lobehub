@@ -297,7 +297,11 @@ export function registerModelCommand(program: Command) {
       }
 
       const client = await getTrpcClient();
-      await client.aiModel.batchUpdateAiModels.mutate({ id: providerId, models } as any);
+      await client.aiModel.batchUpdateAiModels.mutate({
+        id: providerId,
+        models,
+        updateSettings: true,
+      } as any);
       console.log(
         `${pc.green('✓')} Batch updated ${models.length} model(s) for provider ${pc.bold(providerId)}`,
       );

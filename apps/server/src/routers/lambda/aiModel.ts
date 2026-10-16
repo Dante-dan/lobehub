@@ -90,10 +90,14 @@ export const aiModelRouter = router({
         id: z.string(),
         // TODO: Complete validation schema
         models: z.array(z.any()),
+        // Explicit edits opt in; provider-list refreshes preserve user settings.
+        updateSettings: z.boolean().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      return ctx.aiModelModel.batchUpdateAiModels(input.id, input.models);
+      return ctx.aiModelModel.batchUpdateAiModels(input.id, input.models, {
+        updateSettings: input.updateSettings,
+      });
     }),
 
   // Model deletes are workspace-wide at the model layer (no per-user narrowing),

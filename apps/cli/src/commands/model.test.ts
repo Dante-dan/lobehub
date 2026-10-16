@@ -436,13 +436,14 @@ describe('model command', () => {
         'batch-update',
         'openai',
         '--models',
-        '[{"id":"gpt-4","displayName":"GPT-4 Updated"}]',
+        '[{"id":"gpt-4","settings":{"extendParams":["reasoningEffort"]}}]',
       ]);
 
       expect(mockTrpcClient.aiModel.batchUpdateAiModels.mutate).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'openai',
-          models: [{ id: 'gpt-4', displayName: 'GPT-4 Updated' }],
+          models: [{ id: 'gpt-4', settings: { extendParams: ['reasoningEffort'] } }],
+          updateSettings: true,
         }),
       );
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Batch updated'));
