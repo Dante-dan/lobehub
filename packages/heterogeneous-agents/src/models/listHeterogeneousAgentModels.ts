@@ -13,6 +13,7 @@ import { isRecord } from '@lobechat/utils/object';
 import { getHeterogeneousTypeLabel } from '../labels';
 import { resolveCliSpawnPlan } from '../spawn/cliSpawn';
 import { listDroidAcpModels } from '../spawn/droidAcpSession';
+import { listDshAcpModels } from '../spawn/dshAcpSession';
 import { resolveHeteroSpawnCommand } from '../spawn/resolveCliCommand';
 import { listTraeAcpModels } from '../spawn/traeAcpSession';
 import { listCodexModels } from './codex';
@@ -315,6 +316,17 @@ export const listHeterogeneousAgentModels = async (
         args: params.args,
         commandPath: resolved.command,
         cwd: params.cwd ?? process.cwd(),
+        env: env as NodeJS.ProcessEnv,
+        timeoutMs: MODEL_CATALOG_TIMEOUT_MS,
+      });
+      return { models, status: 'success', updatedAt };
+    }
+
+    if (params.type === 'deepseek-harness') {
+      const models = await listDshAcpModels({
+        args: params.args,
+        commandPath: resolved.command,
+        cwd: path.resolve(params.cwd ?? process.cwd()),
         env: env as NodeJS.ProcessEnv,
         timeoutMs: MODEL_CATALOG_TIMEOUT_MS,
       });

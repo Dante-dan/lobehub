@@ -4,11 +4,13 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { listCodexModelsMock, listDroidAcpModelsMock, listTraeAcpModelsMock } = vi.hoisted(() => ({
-  listCodexModelsMock: vi.fn(),
-  listDroidAcpModelsMock: vi.fn(),
-  listTraeAcpModelsMock: vi.fn(),
-}));
+const { listCodexModelsMock, listDroidAcpModelsMock, listDshAcpModelsMock, listTraeAcpModelsMock } =
+  vi.hoisted(() => ({
+    listCodexModelsMock: vi.fn(),
+    listDroidAcpModelsMock: vi.fn(),
+    listDshAcpModelsMock: vi.fn(),
+    listTraeAcpModelsMock: vi.fn(),
+  }));
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof os>('node:os');
@@ -27,6 +29,8 @@ vi.mock('../spawn/traeAcpSession', () => ({
 vi.mock('../spawn/droidAcpSession', () => ({
   listDroidAcpModels: listDroidAcpModelsMock,
 }));
+
+vi.mock('../spawn/dshAcpSession', () => ({ listDshAcpModels: listDshAcpModelsMock }));
 
 vi.mock('./codex', () => ({ listCodexModels: listCodexModelsMock }));
 
@@ -53,11 +57,36 @@ describe('heterogeneous agent model discovery', () => {
     execFileMock.mockReset();
     listCodexModelsMock.mockReset();
     listDroidAcpModelsMock.mockReset();
+    listDshAcpModelsMock.mockReset();
     listTraeAcpModelsMock.mockReset();
   });
 
   afterEach(() => {
     vi.resetModules();
+  });
+
+  it('queries DeepSeek Harness through ACP instead of --list-models', async () => {
+    const models = [{ id: '["gateway","model"]', modelId: 'model', providerId: 'gateway' }];
+    listDshAcpModelsMock.mockResolvedValue(models);
+    const { listHeterogeneousAgentModels } = await importModule();
+    await expect(
+      listHeterogeneousAgentModels({
+        args: ['--config', '/config'],
+        command: '/custom/dsh',
+        cwd: '/repo',
+        env: { DSH_TEST: 'value' },
+        type: 'deepseek-harness',
+      }),
+    ).resolves.toMatchObject({ models, status: 'success' });
+    expect(listDshAcpModelsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ['--config', '/config'],
+        commandPath: '/custom/dsh',
+        cwd: '/repo',
+        env: expect.objectContaining({ DSH_TEST: 'value' }),
+      }),
+    );
+    expect(execFileMock).not.toHaveBeenCalled();
   });
 
   it('queries Codex independently of task transport and forwards the target configuration', async () => {

@@ -1,4 +1,5 @@
 import type { AgentStreamEvent } from '@lobechat/agent-gateway-client';
+import type { HeterogeneousAgentModel } from '@lobechat/types';
 import { isRecord } from '@lobechat/utils/object';
 
 import type { AcpAgentSessionOptions } from './acpAgentSession';
@@ -79,7 +80,7 @@ const DISPOSE_GRACE_MS = 5000;
 const DSH_MODEL_CONFIG_ID = 'model';
 
 interface DshInitializeResult {
-  agentCapabilities?: { sessionCapabilities?: { resume?: unknown } };
+  agentCapabilities?: { sessionCapabilities?: { close?: unknown; resume?: unknown } };
   protocolVersion?: number | string;
 }
 
@@ -96,7 +97,7 @@ interface DshSessionResult {
 
 export interface DshAcpSessionOptions extends AcpAgentSessionOptions {
   /**
-   * Model to select, by name (`deepseek-v4-pro`). A name the runtime does not
+   * Model to select, by ACP tuple value or legacy name (`deepseek-v4-pro`). A name the runtime does not
    * offer keeps the harness's own default rather than failing the turn.
    */
   model?: string;
@@ -158,6 +159,45 @@ export class DshAcpSession extends AcpAgentSession<DshInitializeResult, DshAcpSe
 
   get sessionId(): string | undefined {
     return this.acpSessionId;
+  }
+
+  /** Enumerate the configured providers through ACP without sending a prompt. */
+  async discoverModels(): Promise<HeterogeneousAgentModel[]> {
+    try {
+      const initialized = await this.initializeConnection();
+      const result = await this.client.request<DshSessionResult>('session/new', {
+        cwd: this.options.cwd,
+        mcpServers: [],
+      });
+      if (!result?.sessionId) throw new Error('DeepSeek Harness ACP returned no session id');
+      if (!result.configOptions?.some(({ id }) => id === DSH_MODEL_CONFIG_ID)) {
+        throw new Error('DeepSeek Harness ACP did not expose a model configuration option');
+      }
+      const models = modelChoices(result.configOptions).choices.map(({ name, value }) => {
+        let providerId = 'deepseek-harness';
+        let modelId = value;
+        try {
+          const pair: unknown = JSON.parse(value);
+          if (
+            Array.isArray(pair) &&
+            pair.length === 2 &&
+            typeof pair[0] === 'string' &&
+            typeof pair[1] === 'string'
+          ) {
+            [providerId, modelId] = pair;
+          }
+        } catch {
+          // Keep opaque values usable if a future runtime changes its encoding.
+        }
+        return { id: value, ...(name ? { label: name } : {}), modelId, providerId };
+      });
+      if (initialized?.agentCapabilities?.sessionCapabilities?.close) {
+        await this.client.request('session/close', { sessionId: result.sessionId });
+      }
+      return models;
+    } finally {
+      this.client.close();
+    }
   }
 
   protected buildInitializeParams(): unknown {
@@ -254,7 +294,8 @@ export class DshAcpSession extends AcpAgentSession<DshInitializeResult, DshAcpSe
     const { choices, current } = modelChoices(configOptions);
     const wanted = this.options.model?.trim();
     const choice = wanted
-      ? choices.find(({ name, value }) => name === wanted || modelOf(value) === wanted)
+      ? (choices.find(({ value }) => value === wanted) ??
+        choices.find(({ name, value }) => name === wanted || modelOf(value) === wanted))
       : undefined;
     if (!choice || choice.value === current) return modelOf(current);
 
@@ -380,3 +421,29 @@ export const spawnDshAcpSession = (options: SpawnDshAcpSessionOptions): DshAcpSe
     },
   };
 };
+
+/** Discover DSH models using the same ACP profile as normal agent turns. */
+export const listDshAcpModels = async (options: {
+  args?: string[];
+  clientVersion?: string;
+  commandPath: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  timeoutMs?: number;
+}): Promise<HeterogeneousAgentModel[]> =>
+  new DshAcpSession({
+    args: options.args ?? [],
+    clientVersion: options.clientVersion ?? '1.0.0',
+    commandPath: options.commandPath,
+    cwd: options.cwd,
+    env: options.env,
+    onEvents: () => {},
+    onRawMessage: () => {},
+    onRuntimeStatus: () => {},
+    onSessionId: () => {},
+    onStderr: () => {},
+    operationId: 'dsh-model-discovery',
+    prompt: '',
+    requestTimeoutMs: options.timeoutMs,
+    sessionId: 'dsh-model-discovery',
+  }).discoverModels();
