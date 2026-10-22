@@ -185,19 +185,28 @@ describe('DataExporterRepos', () => {
       const relationsQuery = db.query.agentsToSessions.findMany.bind(db.query.agentsToSessions);
       // Model the legacy driver's response-size failure without depending on a
       // particular WASM version or allocating a large private chat archive.
-      const sessionSpy = vi
-        .spyOn(db.query.sessions, 'findMany')
-        .mockImplementation(async (config) => {
-          const rows = await sessionsQuery(config);
+      const sessionSpy = vi.spyOn(db.query.sessions, 'findMany').mockImplementation((config) => {
+        const query = sessionsQuery(config);
+        const execute = query.execute.bind(query);
+        vi.spyOn(query, 'execute').mockImplementation(async () => {
+          const rows = await execute();
           if (rows.length > 200) throw new RangeError('Database response exceeds transfer buffer');
           return rows;
         });
+        return query;
+      });
       const relationSpy = vi
         .spyOn(db.query.agentsToSessions, 'findMany')
-        .mockImplementation(async (config) => {
-          const rows = await relationsQuery(config);
-          if (rows.length > 200) throw new RangeError('Database response exceeds transfer buffer');
-          return rows;
+        .mockImplementation((config) => {
+          const query = relationsQuery(config);
+          const execute = query.execute.bind(query);
+          vi.spyOn(query, 'execute').mockImplementation(async () => {
+            const rows = await execute();
+            if (rows.length > 200)
+              throw new RangeError('Database response exceeds transfer buffer');
+            return rows;
+          });
+          return query;
         });
 
       const result = await new DataExporterRepos(db, userId).export();
