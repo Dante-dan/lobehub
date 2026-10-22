@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm';
+import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import pMap from 'p-map';
 
 import * as EXPORT_TABLES from '../../schemas';
@@ -157,6 +158,38 @@ export class DataExporterRepos {
     });
   }
 
+  private async queryRows(
+    table: keyof typeof EXPORT_TABLES,
+    where: SQL | undefined,
+    plain = false,
+  ) {
+    const tableObj = EXPORT_TABLES[table] as PgTable;
+    const { columns, primaryKeys } = getTableConfig(tableObj);
+    const orderBy = [
+      ...columns.filter((column) => column.primary),
+      ...primaryKeys.flatMap((key) => key.columns),
+    ];
+    const pageSize = 200;
+    const result: any[] = [];
+
+    // Bound each database response: a full-table response can exceed PGlite's
+    // WASM transfer buffer. Include every primary-key column for stable pages.
+    for (let offset = 0; ; offset += pageSize) {
+      const page = plain
+        ? await this.db
+            .select()
+            .from(tableObj)
+            .where(where)
+            .orderBy(...orderBy)
+            .limit(pageSize)
+            .offset(offset)
+        : // @ts-expect-error query
+          await this.db.query[table].findMany({ limit: pageSize, offset, orderBy, where });
+      result.push(...page);
+      if (page.length < pageSize) return result;
+    }
+  }
+
   private async queryTable(config: RelationTableConfig, existingData: Record<string, any[]>) {
     const { table } = config;
     const tableObj = EXPORT_TABLES[table];
@@ -194,8 +227,7 @@ export class DataExporterRepos {
       // Combine all conditions
       const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
-      // @ts-expect-error query
-      const result = await this.db.query[table].findMany({ where });
+      const result = await this.queryRows(table, where);
 
       // Only remove userId field for tables queried with userId
       console.info(`Successfully exported table: ${table}, count: ${result.length}`);
@@ -236,10 +268,7 @@ export class DataExporterRepos {
       // re-qualifies raw SQL fragments to the outer table alias, which breaks
       // the `topics`-referencing NOT EXISTS inside the shared helpers (same
       // caveat as `MessageModel.queryBySessionId`).
-      const result = shareVisitorWhere
-        ? await this.db.select().from(tableObj).where(where)
-        : // @ts-expect-error query
-          await this.db.query[table].findMany({ where });
+      const result = await this.queryRows(table, where, !!shareVisitorWhere);
 
       // Only remove userId field for tables queried with userId
       console.info(`Successfully exported table: ${table}, count: ${result.length}`);

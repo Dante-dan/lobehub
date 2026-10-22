@@ -172,6 +172,64 @@ describe('DataExporterRepos', () => {
   });
 
   describe('export', () => {
+    it('exports complete base and relation tables when a full response exceeds the transfer limit', async () => {
+      const sessionRows = Array.from({ length: 400 }, (_, i) => ({
+        id: `paged-session-${String(i).padStart(3, '0')}`,
+        userId,
+      }));
+      await db.insert(sessions).values(sessionRows);
+      await db
+        .insert(agentsToSessions)
+        .values(sessionRows.map(({ id }) => ({ agentId: testIds.agentId, sessionId: id, userId })));
+      const sessionsQuery = db.query.sessions.findMany.bind(db.query.sessions);
+      const relationsQuery = db.query.agentsToSessions.findMany.bind(db.query.agentsToSessions);
+      // Model the legacy driver's response-size failure without depending on a
+      // particular WASM version or allocating a large private chat archive.
+      const sessionSpy = vi
+        .spyOn(db.query.sessions, 'findMany')
+        .mockImplementation(async (config) => {
+          const rows = await sessionsQuery(config);
+          if (rows.length > 200) throw new RangeError('Database response exceeds transfer buffer');
+          return rows;
+        });
+      const relationSpy = vi
+        .spyOn(db.query.agentsToSessions, 'findMany')
+        .mockImplementation(async (config) => {
+          const rows = await relationsQuery(config);
+          if (rows.length > 200) throw new RangeError('Database response exceeds transfer buffer');
+          return rows;
+        });
+
+      const result = await new DataExporterRepos(db, userId).export();
+
+      expect(result.sessions).toHaveLength(401);
+      expect(new Set(result.sessions.map(({ id }) => id)).size).toBe(401);
+      expect(result.agentsToSessions).toHaveLength(401);
+      expect(new Set(result.agentsToSessions.map(({ sessionId }) => sessionId)).size).toBe(401);
+      expect(sessionSpy.mock.calls.map(([config]) => config?.offset)).toEqual([0, 200, 400]);
+      expect(relationSpy.mock.calls.map(([config]) => config?.offset)).toEqual([0, 200, 400]);
+    });
+
+    it('exports every conversation across page boundaries with the share-visitor predicates', async () => {
+      const topicRows = Array.from({ length: 400 }, (_, i) => ({
+        id: `paged-topic-${String(i).padStart(3, '0')}`,
+        userId,
+      }));
+      await db.insert(topics).values(topicRows);
+      await db
+        .insert(messages)
+        .values(
+          topicRows.map(({ id }) => ({ id: `message-${id}`, role: 'user', topicId: id, userId })),
+        );
+
+      const result = await new DataExporterRepos(db, userId).export();
+
+      expect(result.topics).toHaveLength(401);
+      expect(result.messages).toHaveLength(401);
+      expect(new Set(result.messages.map(({ id }) => id)).size).toBe(401);
+      expect(result.messages.every((message) => !('userId' in message))).toBe(true);
+    });
+
     it('should export all user data correctly', async () => {
       // Create exporter instance
       const dataExporter = new DataExporterRepos(db, userId);
