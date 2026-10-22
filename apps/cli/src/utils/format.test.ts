@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { formatCost, formatNumber, outputJson, printBoxTable, timeUntil } from './format';
+import { formatCost, formatNumber, outputJson, printBoxTable, timeUntil, truncate } from './format';
 
 describe('formatNumber', () => {
   it('should format numbers with commas', () => {
@@ -179,5 +179,29 @@ describe('timeUntil', () => {
 
   it('degrades an unparseable date to a placeholder', () => {
     expect(timeUntil('not a date')).toBe('-');
+  });
+});
+
+describe('truncate', () => {
+  it.each([
+    ['Hello', 5],
+    ['你好', 4],
+    ['Hi你', 4],
+    ['𠀀好', 4],
+    ['Hello', 6],
+    ['', 0],
+    ['a', 1],
+  ])('preserves %j when it fits in %i columns', (text, width) => {
+    expect(truncate(text, width)).toBe(text);
+  });
+
+  it.each([
+    ['Hello!', 5, 'Hell…'],
+    ['你好呀', 4, '你…'],
+    ['Hi你好', 5, 'Hi你…'],
+    ['𠀀好呀', 4, '𠀀…'],
+    ['ab', 1, '…'],
+  ])('truncates %j to %i columns with an ellipsis', (text, width, expected) => {
+    expect(truncate(text, width)).toBe(expected);
   });
 });
