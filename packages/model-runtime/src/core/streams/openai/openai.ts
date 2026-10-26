@@ -532,6 +532,8 @@ const transformOpenAIStream = (
       const carriedReasoning: StreamProtocolChunk[] = [];
 
       if (typeof reasoning_content === 'string') {
+        // Native reasoning is authoritative; content tags are literal text.
+        streamContext.thinkingInContent = false;
         const reasoningChunk: StreamProtocolChunk = {
           data: reasoning_content,
           id: chunk.id,
