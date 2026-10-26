@@ -560,8 +560,14 @@ const transformOpenAIStream = (
           return { data: convertOpenAIUsage(usage, payload), id: chunk.id, type: 'usage' };
         }
 
+        // Only a leading thinking block is protocol, not literal tags in the answer.
+        // Once ordinary content starts (or the block closes), keep subsequent tags verbatim.
+        if (streamContext.thinkingInContent === undefined && content.trim()) {
+          streamContext.thinkingInContent = content.trimStart().startsWith('<think>');
+        }
+
         // Handle special case with </think> tag: need to split content
-        if (content.includes('</think>')) {
+        if (streamContext.thinkingInContent && content.includes('</think>')) {
           const parts = content.split('</think>');
           const beforeThink = parts[0].replaceAll('<think>', ''); // Remove possible <think> tag
           const afterThink = parts.slice(1).join('</think>'); // Handle case with multiple </think> tags
@@ -594,13 +600,9 @@ const transformOpenAIStream = (
           );
         }
 
-        // Remove <think> tag (no need to split, as content after <think> tag is all reasoning)
-        const thinkingContent = content.replaceAll(/<\/?think>/g, '');
-
-        // Check if there's a <think> tag, update thinkingInContent state
-        if (content.includes('<think>')) {
-          streamContext.thinkingInContent = true;
-        }
+        const thinkingContent = streamContext.thinkingInContent
+          ? content.replaceAll(/<\/?think>/g, '')
+          : content;
 
         // Check if there's citation content, update returnedCitation state
         if (!streamContext?.returnedCitation) {
