@@ -79,6 +79,8 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
       'Search the web for current information and crawl web pages to extract content. Supports automatic engine selection, categories, and time ranges for comprehensive research.',
     title: 'Web Browsing',
   },
-  systemRole: systemPrompt(dayjs(new Date()).format('YYYY-MM-DD')),
+  get systemRole() {
+    return systemPrompt(dayjs(new Date()).format('YYYY-MM-DD'));
+  },
   type: 'builtin',
 };
