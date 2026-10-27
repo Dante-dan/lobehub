@@ -3,21 +3,24 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
 /**
  * Predicate every ownership-scoped read of a recycle-bin-aware table must
- * carry: `is_deleted IS NOT TRUE`.
+ * carry: `is_deleted IS NULL OR is_deleted = FALSE`.
  *
- * It is `IS NOT TRUE` and not `= false` because a live row leaves `is_deleted`
+ * A live row leaves `is_deleted`
  * NULL — only a trashed row is stamped (see `softDeleteColumns()` in
  * `schemas/_helpers.ts`). `is_deleted = false` evaluates to NULL for those
  * rows, which is not true, so an equality filter would hide the entire table
- * instead of just its trashed rows. `IS NOT TRUE` is also correct for a row
- * explicitly stamped `false`, so it holds whichever way the column is written.
+ * instead of just its trashed rows. The explicit NULL/false branches are
+ * equivalent to `IS NOT TRUE`, including rows explicitly stamped `false`.
+ * Keep the expanded form: a non-indexed `IS NOT TRUE` qualifier prevents
+ * pg_search 0.21.4's scored custom scan, so projecting paradedb.score() fails.
  *
  * Kept as a named helper (rather than an inline predicate) so the call sites
  * are greppable when auditing which reads still see trashed rows.
  * `buildWorkspaceWhere` applies it automatically for tables in
  * `TRASH_AWARE_TABLES`; use this only where that funnel is bypassed.
  */
-export const notTrashed = (isDeleted: AnyPgColumn): SQL => sql`${isDeleted} IS NOT TRUE`;
+export const notTrashed = (isDeleted: AnyPgColumn): SQL =>
+  sql`(${isDeleted} IS NULL OR ${isDeleted} = FALSE)`;
 
 /** Inverse of {@link notTrashed}: rows sitting in the recycle bin. */
 export const isTrashed = (isDeleted: AnyPgColumn): SQL => eq(isDeleted, true);

@@ -15,7 +15,9 @@ describe('createPostgresFtsSearchContext with pg_search', () => {
     );
     const built = new PgDialect().sqlToQuery(context.scanScopeWhere(agents));
 
-    expect(built.sql).toBe('("agents"."user_id" = $1 and "agents"."is_deleted" IS NOT TRUE)');
+    expect(built.sql).toBe(
+      '("agents"."user_id" = $1 and ("agents"."is_deleted" IS NULL OR "agents"."is_deleted" = FALSE))',
+    );
     expect(built.params).toStrictEqual(['user-1']);
     expect(context.liftedScopeWhere(agents.workspaceId)).toBeDefined();
   });
